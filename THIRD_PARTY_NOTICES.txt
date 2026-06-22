@@ -1,0 +1,19 @@
+Wolf Electrical Translator includes third-party open-source software and models.
+
+Argos Translate and Argos package index
+Source: https://github.com/argosopentech/argos-translate
+License: MIT or CC0
+
+Argos English-Chinese and Chinese-English model packages, version 1.9
+Derived from OPUS-MT. The model package README identifies the source model
+license as Creative Commons Attribution 4.0 (CC BY 4.0).
+
+Qwen2.5-1.5B-Instruct-GGUF, Q4_K_M
+Source: https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF
+License: Apache License 2.0
+
+llama.cpp
+Source: https://github.com/ggml-org/llama.cpp
+License: MIT
+
+Other bundled Python packages retain their respective licenses.

@@ -29,6 +29,11 @@ class MarkerArtifactBackend(EchoBackend):
         return text.replace("REF991A", "REF991A型机车")
 
 
+class JoinedEnglishMarkerBackend(EchoBackend):
+    def translate(self, text, source, target):
+        return "REF991Cfor REF991Bis REF991A."
+
+
 class UnsafePolisher:
     def polish(self, original, draft, source, target, terms):
         return "润色结果删除了所有工程参数"
@@ -113,6 +118,19 @@ class CoreTests(unittest.TestCase):
         pipeline = TranslationPipeline(MarkerArtifactBackend())
         result = pipeline.translate("IEC 60947-2", "en", "zh", [])
         self.assertEqual(result.text, "IEC 60947-2")
+
+    def test_english_terms_restore_word_boundaries(self):
+        pipeline = TranslationPipeline(JoinedEnglishMarkerBackend())
+        terms = [
+            Term(None, "vacuum circuit breaker", "真空断路器"),
+            Term(None, "rated voltage", "额定电压"),
+        ]
+        result = pipeline.translate("真空断路器的额定电压为11 kV。", "zh", "en", terms)
+        self.assertEqual(result.text, "rated voltage for vacuum circuit breaker is 11 kV.")
+
+    def test_parameters_next_to_chinese_are_protected_without_chinese_suffix(self):
+        values = TranslationPipeline.protected_values("额定电压为11 kV，符合IEC 62271标准。")
+        self.assertEqual(values, ("11 kV", "IEC 62271"))
 
 
 if __name__ == "__main__":

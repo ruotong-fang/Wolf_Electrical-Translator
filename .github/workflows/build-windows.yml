@@ -1,0 +1,44 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+          cache: "pip"
+
+      - name: Install Inno Setup
+        shell: powershell
+        run: choco install innosetup --no-progress -y
+
+      - name: Test and build installer
+        shell: powershell
+        run: .\build.ps1
+
+      - name: Upload customer installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: EE-Translator-Windows-Installer
+          path: |
+            installer-output/Wolf-Electrical-Translator-Setup-0.2.0.exe
+            installer-output/Wolf-Electrical-Translator-Setup-0.2.0.exe.sha256
+          if-no-files-found: error
+          retention-days: 30

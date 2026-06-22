@@ -4,7 +4,7 @@ import traceback
 
 
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ee_translator.app import main
 

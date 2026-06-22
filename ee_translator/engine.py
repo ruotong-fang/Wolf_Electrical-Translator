@@ -96,10 +96,10 @@ class TranslationResult:
 class TranslationPipeline:
     # Protect engineering values before machine translation.
     PROTECTED_PATTERN = re.compile(
-        r"\b(?:IEC|IEEE|EN|BS|DIN|NFPA)\s*[-:]?\s*\d[\w.-]*\b"
-        r"|\b(?:IP|IK)\s*\d{2,3}\b"
-        r"|\b\d+(?:\.\d+)?\s*(?:kV|V|mV|kA|A|mA|MW|kW|W|MVA|kVA|VA|Hz|mm²|mm2|mm|Ω|ohm)\b"
-        r"|\b[A-Z]{2,}[A-Z0-9._/-]*\d[A-Z0-9._/-]*\b",
+        r"(?<![A-Za-z0-9_])(?:IEC|IEEE|EN|BS|DIN|NFPA)\s*[-:]?\s*\d[A-Za-z0-9_.-]*(?![A-Za-z0-9_])"
+        r"|(?<![A-Za-z0-9_])(?:IP|IK)\s*\d{2,3}(?![A-Za-z0-9_])"
+        r"|(?<![A-Za-z0-9_])\d+(?:\.\d+)?\s*(?:kV|V|mV|kA|A|mA|MW|kW|W|MVA|kVA|VA|Hz|mm²|mm2|mm|Ω|ohm)(?![A-Za-z0-9_])"
+        r"|(?<![A-Za-z0-9_])[A-Z]{2,}[A-Z0-9._/-]*\d[A-Z0-9._/-]*(?![A-Za-z0-9_])",
         re.IGNORECASE,
     )
 
@@ -184,7 +184,20 @@ class TranslationPipeline:
         for marker, value in reversed(replacements.items()):
             marker_pattern = r"\s*".join(map(re.escape, marker))
             flexible = re.compile(marker_pattern + r"\s*(?:型(?:电力)?机车)?", re.IGNORECASE)
-            translated, count = flexible.subn(lambda _: value, translated)
+
+            def restore(match: re.Match) -> str:
+                restored = value
+                if target != "en":
+                    return restored
+                before = match.string[match.start() - 1] if match.start() else ""
+                after = match.string[match.end()] if match.end() < len(match.string) else ""
+                if before.isascii() and before.isalnum() and restored[:1].isascii() and restored[:1].isalnum():
+                    restored = " " + restored
+                if after.isascii() and after.isalnum() and restored[-1:].isascii() and restored[-1:].isalnum():
+                    restored += " "
+                return restored
+
+            translated, count = flexible.subn(restore, translated)
             if count == 0:
                 missing.append(value)
 

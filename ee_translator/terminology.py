@@ -13,8 +13,8 @@ from .extended_terms import EXTENDED_TERMS
 TERM_CATEGORIES = ("专业术语", "固定短语")
 
 MEMORY_PARAMETER_PATTERN = re.compile(
-    r"\b(?:IEC|IEEE|EN|BS|DIN|NFPA)\s*[-:]?\s*\d[\w.-]*\b"
-    r"|\b\d+(?:\.\d+)?\s*(?:kV|V|mV|kA|A|mA|MW|kW|W|MVA|kVA|VA|Hz|mm²|mm2|mm|Ω|ohm)?\b",
+    r"(?<![A-Za-z0-9_])(?:IEC|IEEE|EN|BS|DIN|NFPA)\s*[-:]?\s*\d[A-Za-z0-9_.-]*(?![A-Za-z0-9_])"
+    r"|(?<![A-Za-z0-9_])\d+(?:\.\d+)?\s*(?:kV|V|mV|kA|A|mA|MW|kW|W|MVA|kVA|VA|Hz|mm²|mm2|mm|Ω|ohm)?(?![A-Za-z0-9_])",
     re.IGNORECASE,
 )
 
@@ -90,6 +90,7 @@ DEFAULT_TERMS = (
     ("short-circuit current", "短路电流", "专业术语"),
     ("distribution board", "配电板", "专业术语"),
     ("protective relay", "保护继电器", "专业术语"),
+    ("standard", "标准", "专业术语"),
     ("shall be provided with", "应配备", "固定短语"),
     ("unless otherwise specified", "除非另有规定", "固定短语"),
     ("in accordance with", "符合", "固定短语"),

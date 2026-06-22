@@ -151,6 +151,15 @@ activemq-data/
 .env
 .envrc
 .venv
+.build-test/
+.build-cache/
+models/*
+!models/.gitkeep
+runtime/*
+!runtime/.gitkeep
+llm/*
+!llm/.gitkeep
+installer-output/
 env/
 venv/
 ENV/

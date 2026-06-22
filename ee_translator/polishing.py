@@ -25,7 +25,7 @@ class LocalLlamaPolisher:
     def status(self) -> str:
         if not self.configured:
             return "尚未选择本地润色模型"
-        if (bundled_runtime_dir() / "llama-completion.exe").is_file():
+        if self._cli_path().is_file():
             return "本地专业润色已就绪"
         try:
             import llama_cpp  # noqa: F401
@@ -34,7 +34,12 @@ class LocalLlamaPolisher:
         return "本地专业润色已配置"
 
     def _cli_path(self) -> Path:
-        return bundled_runtime_dir() / "llama-completion.exe"
+        runtime = bundled_runtime_dir()
+        for filename in ("llama-cli.exe", "llama-completion.exe"):
+            candidate = runtime / filename
+            if candidate.is_file():
+                return candidate
+        return runtime / "llama-cli.exe"
 
     def _load(self):
         if not self.configured:
@@ -108,7 +113,7 @@ class LocalLlamaPolisher:
             str(cli_path), "-m", self.model_path, "-p", chat_prompt,
             "-c", str(self.context_size), "-n", "384", "-t", str(self.threads),
             "--temp", "0.1", "--top-p", "0.85", "--repeat-penalty", "1.05",
-            "-no-cnv", "--no-display-prompt", "--no-warmup",
+            "-no-cnv", "--no-display-prompt", "--no-warmup", "--simple-io", "--log-disable",
         ]
         creation_flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
         try:

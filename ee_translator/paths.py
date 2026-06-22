@@ -19,12 +19,12 @@ def bundled_models_dir() -> Path:
 
 
 def bundled_runtime_dir() -> Path:
-    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     return bundle_root / "runtime"
 
 
 def bundled_llm_dir() -> Path:
-    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    bundle_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     return bundle_root / "llm"
 
 
