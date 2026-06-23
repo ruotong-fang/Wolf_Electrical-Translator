@@ -12,8 +12,8 @@
 6. 解压下载的 ZIP，得到：
 
 ```text
-Wolf-Electrical-Translator-Setup-0.2.0.exe
-Wolf-Electrical-Translator-Setup-0.2.0.exe.sha256
+Wolf-Electrical-Translator-Setup-0.2.1.exe
+Wolf-Electrical-Translator-Setup-0.2.1.exe.sha256
 ```
 
 安装包已经包含 Python、应用依赖、双向翻译模型、Qwen 本地大模型和 llama.cpp，无需另外下载组件。
@@ -23,15 +23,15 @@ Wolf-Electrical-Translator-Setup-0.2.0.exe.sha256
 在安装包所在文件夹空白处按住 `Shift` 并点击鼠标右键，选择“在终端中打开”，运行：
 
 ```powershell
-Get-FileHash .\Wolf-Electrical-Translator-Setup-0.2.0.exe -Algorithm SHA256
-Get-Content .\Wolf-Electrical-Translator-Setup-0.2.0.exe.sha256
+Get-FileHash .\Wolf-Electrical-Translator-Setup-0.2.1.exe -Algorithm SHA256
+Get-Content .\Wolf-Electrical-Translator-Setup-0.2.1.exe.sha256
 ```
 
 两个命令显示的哈希值应完全一致。如果不一致，不要安装，重新下载安装包。
 
 ## 三、安装
 
-1. 双击 `Wolf-Electrical-Translator-Setup-0.2.0.exe`。
+1. 双击 `Wolf-Electrical-Translator-Setup-0.2.1.exe`。
 2. 当前测试版尚未购买代码签名证书，Windows 可能显示 SmartScreen 提示。
 3. 确认文件哈希正确后，点击“更多信息”，再点击“仍要运行”。
 4. 按安装向导继续，建议保留默认安装位置。

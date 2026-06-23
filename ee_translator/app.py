@@ -319,11 +319,12 @@ class TranslatorApp(tk.Tk):
     def _build_settings_tab(self, parent: ttk.Frame) -> None:
         model = ttk.Labelframe(parent, text="专业翻译模型", padding=16)
         model.pack(fill="x")
-        ttk.Label(model, text="专业翻译需要一个 1.5B、Q4 量化的 GGUF 模型；未配置时自动使用快速翻译。", style="Card.TLabel").grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        ttk.Label(model, text="专业翻译需要一个 1.5B、Q4 量化的 GGUF 模型；未配置时自动使用快速翻译。", style="Card.TLabel").grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 12))
         ttk.Entry(model, textvariable=self.model_path, state="readonly").grid(row=1, column=0, sticky="ew")
         ttk.Button(model, text="选择模型文件", command=self._select_model).grid(row=1, column=1, padx=8)
         ttk.Button(model, text="清除配置", command=self._clear_model).grid(row=1, column=2)
-        ttk.Label(model, textvariable=self.model_status, style="Card.TLabel").grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        ttk.Button(model, text="测试专业模型", command=self._test_polisher).grid(row=1, column=3)
+        ttk.Label(model, textvariable=self.model_status, style="Card.TLabel").grid(row=2, column=0, columnspan=4, sticky="w", pady=(10, 0))
         model.columnconfigure(0, weight=1)
 
         engine = ttk.Labelframe(parent, text="快速翻译引擎", padding=16)
@@ -411,6 +412,8 @@ class TranslatorApp(tk.Tk):
         if self.memory_hint and not result.from_memory:
             notices.append(self.memory_hint)
         self.status.set("；".join(notices) if notices else label + "，内容未离开本机")
+        if self.mode.get() == "专业翻译" and not result.polished and any("润色" in item for item in notices):
+            messagebox.showwarning("专业润色未生效", "当前显示的是 ARGOS 初译。\n\n" + "\n".join(notices))
         self.translating = False
         self.translate_button.configure(state="normal")
 
@@ -592,6 +595,31 @@ class TranslatorApp(tk.Tk):
         self.polisher = self._make_polisher()
         self.pipeline.polisher = self.polisher
         self.model_status.set(self.polisher.status())
+
+    def _test_polisher(self) -> None:
+        if self.translating:
+            messagebox.showinfo("正在翻译", "请等待当前翻译完成后再测试专业模型。")
+            return
+        self.model_status.set("正在测试本地专业模型，首次运行可能需要几分钟...")
+        threading.Thread(target=self._test_polisher_in_background, daemon=True).start()
+
+    def _test_polisher_in_background(self) -> None:
+        original = "Rated voltage of the vacuum circuit breaker is 11 kV according to IEC 62271."
+        draft = "真空断路器额定电压是11 kV,根据IEC 62271."
+        try:
+            polished = self.polisher.polish(original, draft, "en", "zh", self.store.list_terms())
+        except Exception as exc:
+            self.after(0, self._show_polisher_test_failed, str(exc))
+            return
+        self.after(0, self._show_polisher_test_success, polished)
+
+    def _show_polisher_test_success(self, polished: str) -> None:
+        self.model_status.set("本地专业模型测试成功")
+        messagebox.showinfo("专业模型测试成功", "大模型已成功返回润色结果：\n\n" + polished[:600])
+
+    def _show_polisher_test_failed(self, detail: str) -> None:
+        self.model_status.set("本地专业模型测试失败")
+        messagebox.showwarning("专业模型测试失败", detail)
 
     def _install_model(self) -> None:
         path = filedialog.askopenfilename(title="选择 Argos 离线模型", filetypes=(("Argos 模型", "*.argosmodel"),))

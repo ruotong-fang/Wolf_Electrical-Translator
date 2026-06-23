@@ -176,8 +176,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup installer build failed."
 }
 
-$Installer = Join-Path $Root "installer-output\Wolf-Electrical-Translator-Setup-0.2.0.exe"
+$Installer = Join-Path $Root "installer-output\Wolf-Electrical-Translator-Setup-0.2.1.exe"
 $InstallerHash = (Get-FileHash $Installer -Algorithm SHA256).Hash.ToLowerInvariant()
-Set-Content -LiteralPath "${Installer}.sha256" -Value "$InstallerHash  Wolf-Electrical-Translator-Setup-0.2.0.exe" -Encoding ascii
+Set-Content -LiteralPath "${Installer}.sha256" -Value "$InstallerHash  Wolf-Electrical-Translator-Setup-0.2.1.exe" -Encoding ascii
 Write-Host "Installer build completed: $Installer"
 Write-Host "SHA-256: $InstallerHash"

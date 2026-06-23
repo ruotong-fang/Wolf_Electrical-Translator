@@ -21,7 +21,7 @@
 最终用户只会收到一个文件：
 
 ```text
-Wolf-Electrical-Translator-Setup-0.2.0.exe
+Wolf-Electrical-Translator-Setup-0.2.1.exe
 ```
 
 双击安装后即可离线使用，不需要安装 Python、下载模型、配置环境或运行 BAT 文件。安装包包含：
@@ -53,7 +53,7 @@ build_release_windows.bat
 脚本会自动创建隔离环境、安装依赖、下载并校验全部模型和 llama.cpp、运行测试、封装 Python 应用，最终生成：
 
 ```text
-installer-output\Wolf-Electrical-Translator-Setup-0.2.0.exe
+installer-output\Wolf-Electrical-Translator-Setup-0.2.1.exe
 ```
 
 也可以在 GitHub Actions 页面运行 `Build Windows Installer`，完成后下载 `EE-Translator-Windows-Installer` artifact。目标电脑安装和运行时不需要联网。

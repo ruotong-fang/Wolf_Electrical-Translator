@@ -1,11 +1,14 @@
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest import mock
 
 from ee_translator.documents import extract_document, text_candidates
 from ee_translator.engine import TranslationPipeline
+from ee_translator.polishing import LocalLlamaPolisher
 from ee_translator.terminology import (
     Term,
     TerminologyStore,
@@ -131,6 +134,23 @@ class CoreTests(unittest.TestCase):
     def test_parameters_next_to_chinese_are_protected_without_chinese_suffix(self):
         values = TranslationPipeline.protected_values("额定电压为11 kV，符合IEC 62271标准。")
         self.assertEqual(values, ("11 kV", "IEC 62271"))
+
+    def test_llama_cli_reads_prompt_from_utf8_file(self):
+        captured = {}
+
+        def fake_run(command, **kwargs):
+            captured["command"] = command
+            prompt_path = Path(command[command.index("-f") + 1])
+            captured["prompt"] = prompt_path.read_text(encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "润色译文".encode("utf-8"), b"")
+
+        polisher = LocalLlamaPolisher("model.gguf")
+        with mock.patch("ee_translator.polishing.subprocess.run", side_effect=fake_run):
+            result = polisher._polish_with_cli(Path("llama-cli.exe"), "中文 prompt")
+        self.assertEqual(result, "润色译文")
+        self.assertIn("-f", captured["command"])
+        self.assertNotIn("-p", captured["command"])
+        self.assertIn("中文 prompt", captured["prompt"])
 
 
 if __name__ == "__main__":

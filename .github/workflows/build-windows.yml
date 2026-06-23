@@ -38,7 +38,7 @@ jobs:
         with:
           name: EE-Translator-Windows-Installer
           path: |
-            installer-output/Wolf-Electrical-Translator-Setup-0.2.0.exe
-            installer-output/Wolf-Electrical-Translator-Setup-0.2.0.exe.sha256
+            installer-output/Wolf-Electrical-Translator-Setup-0.2.1.exe
+            installer-output/Wolf-Electrical-Translator-Setup-0.2.1.exe.sha256
           if-no-files-found: error
           retention-days: 30

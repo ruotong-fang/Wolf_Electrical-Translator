@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 from typing import Sequence
 
 from .paths import bundled_runtime_dir
@@ -109,25 +110,29 @@ class LocalLlamaPolisher:
         )
         if len(chat_prompt) > 12000:
             raise PolishingUnavailable("文本过长，请分段使用专业翻译")
-        command = [
-            str(cli_path), "-m", self.model_path, "-p", chat_prompt,
-            "-c", str(self.context_size), "-n", "384", "-t", str(self.threads),
-            "--temp", "0.1", "--top-p", "0.85", "--repeat-penalty", "1.05",
-            "-no-cnv", "--no-display-prompt", "--no-warmup", "--simple-io", "--log-disable",
-        ]
         creation_flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
-        try:
-            completed = subprocess.run(
-                command,
-                capture_output=True,
-                timeout=900,
-                creationflags=creation_flags,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise PolishingUnavailable(f"本地润色模型运行失败：{exc}") from exc
+        with tempfile.TemporaryDirectory(prefix="ee-translator-llm-") as directory:
+            prompt_path = Path(directory) / "prompt.txt"
+            prompt_path.write_text(chat_prompt, encoding="utf-8")
+            command = [
+                str(cli_path), "-m", self.model_path, "-f", str(prompt_path),
+                "-c", str(self.context_size), "-n", "384", "-t", str(self.threads),
+                "--temp", "0.1", "--top-p", "0.85", "--repeat-penalty", "1.05",
+                "-no-cnv", "--no-display-prompt", "--no-warmup", "--simple-io", "--log-disable",
+            ]
+            try:
+                completed = subprocess.run(
+                    command,
+                    capture_output=True,
+                    timeout=900,
+                    creationflags=creation_flags,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise PolishingUnavailable(f"本地润色模型运行失败：{exc}") from exc
         text = self._decode_output(completed.stdout).strip().removesuffix("<|im_end|>").strip()
-        text = re.sub(r"\s*(?:\[end of text\]|<\|endoftext\|>)\s*$", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*(?:\[end of text\]|<\|endoftext\|>|<\|im_end\|>)\s*$", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"^\s*(?:assistant|最终译文)\s*[:：]\s*", "", text, flags=re.IGNORECASE).strip()
         if completed.returncode != 0 or not text:
             detail = self._decode_output(completed.stderr).strip().splitlines()
             message = detail[-1] if detail else "模型没有返回内容"
