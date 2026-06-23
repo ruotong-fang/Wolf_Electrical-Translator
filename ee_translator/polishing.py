@@ -28,6 +28,8 @@ class LocalLlamaPolisher:
             return "尚未选择本地润色模型"
         if self._cli_path().is_file():
             return "本地专业润色已就绪"
+        if (bundled_runtime_dir() / "llama-cli.exe").is_file():
+            return "内置 llama.cpp 运行器不兼容：缺少 llama-completion.exe"
         try:
             import llama_cpp  # noqa: F401
         except ImportError:
@@ -35,12 +37,7 @@ class LocalLlamaPolisher:
         return "本地专业润色已配置"
 
     def _cli_path(self) -> Path:
-        runtime = bundled_runtime_dir()
-        for filename in ("llama-cli.exe", "llama-completion.exe"):
-            candidate = runtime / filename
-            if candidate.is_file():
-                return candidate
-        return runtime / "llama-cli.exe"
+        return bundled_runtime_dir() / "llama-completion.exe"
 
     def _load(self):
         if not self.configured:
@@ -87,6 +84,8 @@ class LocalLlamaPolisher:
         cli_path = self._cli_path()
         if cli_path.is_file():
             return self._polish_with_cli(cli_path, prompt)
+        if (bundled_runtime_dir() / "llama-cli.exe").is_file():
+            raise PolishingUnavailable("当前内置 llama.cpp 运行器不兼容：缺少 llama-completion.exe，请重新安装新版安装包")
         model = self._load()
         response = model(
             prompt,
@@ -118,8 +117,10 @@ class LocalLlamaPolisher:
                 str(cli_path), "-m", self.model_path, "-f", str(prompt_path),
                 "-c", str(self.context_size), "-n", "384", "-t", str(self.threads),
                 "--temp", "0.1", "--top-p", "0.85", "--repeat-penalty", "1.05",
-                "-no-cnv", "--no-display-prompt", "--no-warmup", "--simple-io", "--log-disable",
+                "--no-display-prompt", "--no-warmup", "--simple-io", "--log-disable",
             ]
+            if cli_path.name.lower() == "llama-completion.exe":
+                command.append("-no-cnv")
             try:
                 completed = subprocess.run(
                     command,
@@ -133,11 +134,27 @@ class LocalLlamaPolisher:
         text = self._decode_output(completed.stdout).strip().removesuffix("<|im_end|>").strip()
         text = re.sub(r"\s*(?:\[end of text\]|<\|endoftext\|>|<\|im_end\|>)\s*$", "", text, flags=re.IGNORECASE)
         text = re.sub(r"^\s*(?:assistant|最终译文)\s*[:：]\s*", "", text, flags=re.IGNORECASE).strip()
+        if self._looks_like_runtime_log(text):
+            text = ""
         if completed.returncode != 0 or not text:
             detail = self._decode_output(completed.stderr).strip().splitlines()
-            message = detail[-1] if detail else "模型没有返回内容"
+            output_detail = self._decode_output(completed.stdout).strip().splitlines()
+            message = detail[-1] if detail else (output_detail[0] if output_detail else "模型没有返回内容")
             raise PolishingUnavailable(f"本地润色模型运行失败：{message}")
         return text
+
+    @staticmethod
+    def _looks_like_runtime_log(text: str) -> bool:
+        lower = text.lower()
+        log_markers = (
+            "loading model",
+            "available commands",
+            "please use llama-completion instead",
+            "build  :",
+            "model  :",
+            "modalities :",
+        )
+        return any(marker in lower for marker in log_markers)
 
     @staticmethod
     def _decode_output(data: bytes) -> str:

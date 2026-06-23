@@ -95,9 +95,9 @@ if ((Get-FileHash $RuntimeZip -Algorithm SHA256).Hash -ne $RuntimeHash) {
     throw "llama.cpp runtime verification failed."
 }
 Expand-Archive -LiteralPath $RuntimeZip -DestinationPath $RuntimeDir -Force
-$LlamaCli = Get-ChildItem -Path $RuntimeDir -Filter "llama-cli.exe" -File -Recurse | Select-Object -First 1
+$LlamaCli = Get-ChildItem -Path $RuntimeDir -Filter "llama-completion.exe" -File -Recurse | Select-Object -First 1
 if (-not $LlamaCli) {
-    throw "llama-cli.exe was not found in the llama.cpp archive."
+    throw "llama-completion.exe was not found in the llama.cpp archive."
 }
 if ($LlamaCli.DirectoryName -ne $RuntimeDir) {
     Copy-Item -Path (Join-Path $LlamaCli.DirectoryName "*") -Destination $RuntimeDir -Recurse -Force

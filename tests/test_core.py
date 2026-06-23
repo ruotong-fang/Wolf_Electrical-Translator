@@ -8,7 +8,7 @@ from unittest import mock
 
 from ee_translator.documents import extract_document, text_candidates
 from ee_translator.engine import TranslationPipeline
-from ee_translator.polishing import LocalLlamaPolisher
+from ee_translator.polishing import LocalLlamaPolisher, PolishingUnavailable
 from ee_translator.terminology import (
     Term,
     TerminologyStore,
@@ -146,11 +146,28 @@ class CoreTests(unittest.TestCase):
 
         polisher = LocalLlamaPolisher("model.gguf")
         with mock.patch("ee_translator.polishing.subprocess.run", side_effect=fake_run):
-            result = polisher._polish_with_cli(Path("llama-cli.exe"), "中文 prompt")
+            result = polisher._polish_with_cli(Path("llama-completion.exe"), "中文 prompt")
         self.assertEqual(result, "润色译文")
         self.assertIn("-f", captured["command"])
         self.assertNotIn("-p", captured["command"])
+        self.assertIn("-no-cnv", captured["command"])
         self.assertIn("中文 prompt", captured["prompt"])
+
+    def test_llama_cli_runtime_log_is_not_polish_result(self):
+        runtime_log = (
+            "--no-conversation is not supported by 'llama-cli'\n"
+            "please use llama-completion instead\n\n"
+            "Loading model...\n"
+            "available commands:\n"
+        )
+
+        def fake_run(command, **kwargs):
+            return subprocess.CompletedProcess(command, 0, runtime_log.encode("utf-8"), b"")
+
+        polisher = LocalLlamaPolisher("model.gguf")
+        with mock.patch("ee_translator.polishing.subprocess.run", side_effect=fake_run):
+            with self.assertRaises(PolishingUnavailable):
+                polisher._polish_with_cli(Path("llama-cli.exe"), "中文 prompt")
 
 
 if __name__ == "__main__":

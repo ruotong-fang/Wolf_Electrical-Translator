@@ -74,6 +74,7 @@ class TranslatorApp(tk.Tk):
         self.translating = False
         self.last_source = ""
         self.last_result = ""
+        self.last_result_display_is_notice = False
         self.memory_hint = ""
 
         self._configure_styles()
@@ -233,6 +234,9 @@ class TranslatorApp(tk.Tk):
         ttk.Button(controls, text="保存译文", command=self._save_translation).pack(side="right", padx=7)
         ttk.Button(controls, text="记住此译文", command=self._remember_translation).pack(side="right")
         ttk.Button(controls, text="清空", command=self._clear_text).pack(side="right", padx=7)
+        self.progress = ttk.Progressbar(parent, mode="indeterminate")
+        self.progress.pack(fill="x", pady=(0, 10))
+        self.progress.stop()
 
         panes = tk.PanedWindow(
             parent,
@@ -383,7 +387,11 @@ class TranslatorApp(tk.Tk):
             self.memory_hint = f"发现 {best_suggestion:.0%} 相似的历史句段，可在翻译记忆页参考"
         self.translating = True
         self.translate_button.configure(state="disabled")
-        self.status.set("正在本机处理，首次加载模型可能需要一些时间...")
+        if self.mode.get() == "专业翻译":
+            self.status.set("正在快速翻译，随后会调用本地大模型润色；首次加载可能需要几分钟...")
+        else:
+            self.status.set("正在快速翻译，内容只在本机处理...")
+        self._start_busy()
         terms = self.store.list_terms() + memory_terms
         professional = self.mode.get() == "专业翻译"
         threading.Thread(target=self._translate_in_background, args=(text, source, target, terms, professional), daemon=True).start()
@@ -400,7 +408,15 @@ class TranslatorApp(tk.Tk):
         self.after(0, self._show_translation, result, text)
 
     def _show_translation(self, result: TranslationResult, source_text: str) -> None:
-        for widget, value in ((self.target_text, result.text), (self.draft_text, result.draft or result.text)):
+        notices = list(result.warnings)
+        if self.memory_hint and not result.from_memory:
+            notices.append(self.memory_hint)
+        final_display = result.text
+        self.last_result_display_is_notice = False
+        if self.mode.get() == "专业翻译" and not result.polished and not result.from_memory:
+            final_display = self._professional_fallback_notice(notices)
+            self.last_result_display_is_notice = True
+        for widget, value in ((self.target_text, final_display), (self.draft_text, result.draft or result.text)):
             widget.delete("1.0", "end")
             widget.insert("1.0", value)
         self.last_source = source_text
@@ -408,24 +424,39 @@ class TranslatorApp(tk.Tk):
         label = "专业润色完成" if result.polished else "翻译完成"
         if result.from_memory:
             label = "已命中翻译记忆"
-        notices = list(result.warnings)
-        if self.memory_hint and not result.from_memory:
-            notices.append(self.memory_hint)
         self.status.set("；".join(notices) if notices else label + "，内容未离开本机")
         if self.mode.get() == "专业翻译" and not result.polished and any("润色" in item for item in notices):
             messagebox.showwarning("专业润色未生效", "当前显示的是 ARGOS 初译。\n\n" + "\n".join(notices))
+        self._stop_busy()
         self.translating = False
         self.translate_button.configure(state="normal")
+
+    @staticmethod
+    def _professional_fallback_notice(notices) -> str:
+        detail = "\n".join(f"- {item}" for item in notices) if notices else "- 本次仅完成 ARGOS 初译。"
+        return (
+            "未使用大模型润色。\n\n"
+            "当前可用译文在“ARGOS 初译”页签中；保存译文或记住此译文时会使用 ARGOS 初译结果。\n\n"
+            "原因：\n"
+            f"{detail}"
+        )
 
     def _translation_failed(self, title: str, detail: str, is_error: bool) -> None:
         self.translating = False
         self.translate_button.configure(state="normal")
+        self._stop_busy()
         self.status.set(detail)
         (messagebox.showerror if is_error else messagebox.showwarning)(title, detail)
 
+    def _start_busy(self) -> None:
+        self.progress.start(12)
+
+    def _stop_busy(self) -> None:
+        self.progress.stop()
+
     def _remember_translation(self) -> None:
         source_text = self.source_text.get("1.0", "end-1c").strip()
-        target_text = self.target_text.get("1.0", "end-1c").strip()
+        target_text = self.last_result.strip() if self.last_result_display_is_notice else self.target_text.get("1.0", "end-1c").strip()
         if not source_text or not target_text:
             messagebox.showinfo("内容不完整", "请先完成翻译并确认译文")
             return
@@ -438,6 +469,8 @@ class TranslatorApp(tk.Tk):
         for widget in (self.source_text, self.target_text, self.draft_text):
             widget.delete("1.0", "end")
         self.opened_file.set("未打开文件，可直接粘贴文字")
+        self.last_result = ""
+        self.last_result_display_is_notice = False
         self.status.set("就绪")
 
     def _open_file(self) -> None:
@@ -456,6 +489,8 @@ class TranslatorApp(tk.Tk):
         self.source_text.insert("1.0", document.text)
         self.target_text.delete("1.0", "end")
         self.draft_text.delete("1.0", "end")
+        self.last_result = ""
+        self.last_result_display_is_notice = False
         self.opened_file.set(os.path.basename(path))
         self.status.set(document.warning or f"已打开 {document.kind} 文件")
 
@@ -505,7 +540,7 @@ class TranslatorApp(tk.Tk):
         return result["encoding"]
 
     def _save_translation(self) -> None:
-        text = self.target_text.get("1.0", "end-1c")
+        text = self.last_result if self.last_result_display_is_notice else self.target_text.get("1.0", "end-1c")
         if not text.strip():
             messagebox.showinfo("没有译文", "请先完成翻译")
             return
@@ -601,6 +636,8 @@ class TranslatorApp(tk.Tk):
             messagebox.showinfo("正在翻译", "请等待当前翻译完成后再测试专业模型。")
             return
         self.model_status.set("正在测试本地专业模型，首次运行可能需要几分钟...")
+        self.status.set("正在调用本地专业模型测试，内容只在本机处理...")
+        self._start_busy()
         threading.Thread(target=self._test_polisher_in_background, daemon=True).start()
 
     def _test_polisher_in_background(self) -> None:
@@ -614,10 +651,12 @@ class TranslatorApp(tk.Tk):
         self.after(0, self._show_polisher_test_success, polished)
 
     def _show_polisher_test_success(self, polished: str) -> None:
+        self._stop_busy()
         self.model_status.set("本地专业模型测试成功")
         messagebox.showinfo("专业模型测试成功", "大模型已成功返回润色结果：\n\n" + polished[:600])
 
     def _show_polisher_test_failed(self, detail: str) -> None:
+        self._stop_busy()
         self.model_status.set("本地专业模型测试失败")
         messagebox.showwarning("专业模型测试失败", detail)
 
