@@ -7,7 +7,7 @@ from ee_translator.terminology import Term
 install_bundled_packages(Path("models"))
 backend = ArgosBackend()
 pairs = set(backend.available_pairs())
-assert {("en", "zh"), ("zh", "en")} <= pairs, f"缺少翻译方向：{pairs}"
+assert {("en", "zh"), ("zh", "en")} <= pairs, f"Missing translation directions:{pairs}"
 
 pipeline = TranslationPipeline(backend)
 terms = [
@@ -27,4 +27,4 @@ for text, source, target, expected in samples:
     assert not result.warnings, result.warnings
     print(f"{source}->{target}: translation ok")
 
-print("离线模型验证通过。")
+print("Offline model validation passed.")
