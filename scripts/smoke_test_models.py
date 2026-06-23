@@ -25,6 +25,6 @@ for text, source, target, expected in samples:
     assert "11 kV" in result.text, result.text
     assert "IEC 62271" in result.text, result.text
     assert not result.warnings, result.warnings
-    print(f"{source}->{target}: {result.text}")
+    print(f"{source}->{target}: translation ok")
 
 print("离线模型验证通过。")
