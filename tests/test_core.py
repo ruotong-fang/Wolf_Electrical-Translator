@@ -135,7 +135,7 @@ class CoreTests(unittest.TestCase):
         values = TranslationPipeline.protected_values("额定电压为11 kV，符合IEC 62271标准。")
         self.assertEqual(values, ("11 kV", "IEC 62271"))
 
-    def test_llama_cli_reads_prompt_from_utf8_file(self):
+    def test_llama_cli_uses_model_chat_template_and_utf8_prompt_file(self):
         captured = {}
 
         def fake_run(command, **kwargs):
@@ -150,8 +150,59 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(result, "润色译文")
         self.assertIn("-f", captured["command"])
         self.assertNotIn("-p", captured["command"])
-        self.assertIn("-no-cnv", captured["command"])
+        self.assertIn("--jinja", captured["command"])
+        self.assertIn("--single-turn", captured["command"])
+        self.assertIn("-sysf", captured["command"])
+        self.assertNotIn("-no-cnv", captured["command"])
         self.assertIn("中文 prompt", captured["prompt"])
+        self.assertNotIn("<|im_start|>", captured["prompt"])
+
+    def test_llama_cli_falls_back_to_explicit_chatml_after_empty_output(self):
+        calls = []
+
+        def fake_run(command, **kwargs):
+            prompt_path = Path(command[command.index("-f") + 1])
+            calls.append((command, prompt_path.read_text(encoding="utf-8")))
+            if len(calls) == 1:
+                return subprocess.CompletedProcess(command, 0, b"", b"")
+            return subprocess.CompletedProcess(command, 0, "润色译文".encode("utf-8"), b"")
+
+        polisher = LocalLlamaPolisher("model.gguf")
+        with mock.patch("ee_translator.polishing.subprocess.run", side_effect=fake_run):
+            result = polisher._polish_with_cli(Path("llama-completion.exe"), "中文 prompt")
+        self.assertEqual(result, "润色译文")
+        self.assertIn("--jinja", calls[0][0])
+        self.assertNotIn("<|im_start|>", calls[0][1])
+        self.assertIn("-no-cnv", calls[1][0])
+        self.assertIn("<|im_start|>assistant", calls[1][1])
+
+    def test_professional_translation_examples_in_both_directions(self):
+        examples = (
+            (
+                "差动保护装置持续比较保护区两端的电流。",
+                "The differential protection device continuously compares currents at both ends of the protected area.",
+                "The differential protection relay continuously compares the currents at both ends of the protected zone.",
+                "zh", "en",
+            ),
+            (
+                "The circuit breaker shall interrupt the rated short-circuit current within 60 ms.",
+                "断路器应在60毫秒内中断额定短路电流。",
+                "断路器应在60 ms内开断额定短路电流。",
+                "en", "zh",
+            ),
+        )
+        for original, draft, polished, source, target in examples:
+            with self.subTest(source=source, target=target):
+                backend = mock.Mock()
+                backend.translate.return_value = draft
+                polisher = mock.Mock()
+                polisher.polish.return_value = polished
+                result = TranslationPipeline(backend, polisher).translate(
+                    original, source, target, [], professional=True
+                )
+                self.assertEqual(result.draft, draft)
+                self.assertEqual(result.text, polished)
+                self.assertTrue(result.polished)
 
     def test_llama_cli_runtime_log_is_not_polish_result(self):
         runtime_log = (
@@ -168,6 +219,21 @@ class CoreTests(unittest.TestCase):
         with mock.patch("ee_translator.polishing.subprocess.run", side_effect=fake_run):
             with self.assertRaises(PolishingUnavailable):
                 polisher._polish_with_cli(Path("llama-cli.exe"), "中文 prompt")
+
+    def test_python_fallback_uses_chat_completion(self):
+        model = mock.Mock()
+        model.create_chat_completion.return_value = {
+            "choices": [{"message": {"content": "专业润色译文"}}]
+        }
+        polisher = LocalLlamaPolisher("model.gguf")
+        with mock.patch.object(polisher, "_cli_path", return_value=Path("missing.exe")), \
+             mock.patch.object(polisher, "_load", return_value=model), \
+             mock.patch("ee_translator.polishing.bundled_runtime_dir", return_value=Path("missing-runtime")):
+            result = polisher.polish("原文", "初译", "zh", "en", [])
+        self.assertEqual(result, "专业润色译文")
+        messages = model.create_chat_completion.call_args.kwargs["messages"]
+        self.assertEqual(messages[0]["role"], "system")
+        self.assertEqual(messages[1]["role"], "user")
 
 
 if __name__ == "__main__":

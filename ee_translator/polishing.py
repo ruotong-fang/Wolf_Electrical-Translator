@@ -13,6 +13,8 @@ class PolishingUnavailable(RuntimeError):
 
 
 class LocalLlamaPolisher:
+    SYSTEM_PROMPT = "You are a precise electrical engineering translation editor."
+
     def __init__(self, model_path: str = "", context_size: int = 2048, threads: int = 4):
         self.model_path = model_path
         self.context_size = context_size
@@ -87,23 +89,24 @@ class LocalLlamaPolisher:
         if (bundled_runtime_dir() / "llama-cli.exe").is_file():
             raise PolishingUnavailable("当前内置 llama.cpp 运行器不兼容：缺少 llama-completion.exe，请重新安装新版安装包")
         model = self._load()
-        response = model(
-            prompt,
+        response = model.create_chat_completion(
+            messages=(
+                {"role": "system", "content": self.SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ),
             max_tokens=min(1024, self.context_size // 2),
             temperature=0.1,
             top_p=0.85,
             repeat_penalty=1.05,
-            stop=["\n\n原文：", "\n\n机器初译："],
-            echo=False,
         )
-        text = response["choices"][0]["text"].strip()
+        text = response["choices"][0]["message"]["content"].strip()
         if not text:
             raise PolishingUnavailable("本地模型没有返回润色结果")
         return text
 
     def _polish_with_cli(self, cli_path: Path, prompt: str) -> str:
         chat_prompt = (
-            "<|im_start|>system\nYou are a precise electrical engineering editor."
+            f"<|im_start|>system\n{self.SYSTEM_PROMPT}"
             "<|im_end|>\n<|im_start|>user\n" + prompt
             + "<|im_end|>\n<|im_start|>assistant\n"
         )
@@ -111,37 +114,75 @@ class LocalLlamaPolisher:
             raise PolishingUnavailable("文本过长，请分段使用专业翻译")
         creation_flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
         with tempfile.TemporaryDirectory(prefix="ee-translator-llm-") as directory:
-            prompt_path = Path(directory) / "prompt.txt"
-            prompt_path.write_text(chat_prompt, encoding="utf-8")
-            command = [
-                str(cli_path), "-m", self.model_path, "-f", str(prompt_path),
-                "-c", str(self.context_size), "-n", "384", "-t", str(self.threads),
-                "--temp", "0.1", "--top-p", "0.85", "--repeat-penalty", "1.05",
-                "--no-display-prompt", "--no-warmup", "--simple-io", "--log-disable",
-            ]
-            if cli_path.name.lower() == "llama-completion.exe":
-                command.append("-no-cnv")
-            try:
-                completed = subprocess.run(
-                    command,
-                    capture_output=True,
-                    timeout=900,
-                    creationflags=creation_flags,
-                    check=False,
-                )
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                raise PolishingUnavailable(f"本地润色模型运行失败：{exc}") from exc
-        text = self._decode_output(completed.stdout).strip().removesuffix("<|im_end|>").strip()
+            system_path = Path(directory) / "system-prompt.txt"
+            system_path.write_text(self.SYSTEM_PROMPT, encoding="utf-8")
+            attempts = (
+                # Let llama.cpp apply tokenizer.chat_template from the Qwen GGUF.
+                ("jinja", prompt, "jinja"),
+                # Compatibility fallback for runtimes without Jinja support.
+                ("chatml", chat_prompt, "chatml"),
+            )
+            diagnostics = []
+            for name, prompt_text, mode in attempts:
+                prompt_path = Path(directory) / f"{name}-prompt.txt"
+                prompt_path.write_text(prompt_text, encoding="utf-8")
+                command = self._completion_command(cli_path, prompt_path, system_path, mode)
+                try:
+                    completed = subprocess.run(
+                        command,
+                        capture_output=True,
+                        timeout=900,
+                        creationflags=creation_flags,
+                        check=False,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise PolishingUnavailable(f"本地润色模型运行失败：{exc}") from exc
+                text = self._clean_cli_output(completed.stdout)
+                if completed.returncode == 0 and text:
+                    return text
+                diagnostics.append(self._diagnostic_line(name, completed))
+        raise PolishingUnavailable("本地润色模型没有返回译文：" + "；".join(diagnostics))
+
+    def _completion_command(
+        self,
+        cli_path: Path,
+        prompt_path: Path,
+        system_path: Path,
+        mode: str,
+    ) -> list[str]:
+        command = [
+            str(cli_path), "-m", self.model_path, "-f", str(prompt_path),
+            "-c", str(self.context_size), "-n", "384", "-t", str(self.threads),
+            "--temp", "0.1", "--top-p", "0.85", "--repeat-penalty", "1.05",
+            "--no-display-prompt", "--no-warmup", "--simple-io", "--log-disable",
+        ]
+        if mode == "jinja":
+            command.extend(("--jinja", "--single-turn", "-sysf", str(system_path)))
+        elif mode == "chatml":
+            command.append("-no-cnv")
+        else:
+            raise ValueError(f"未知 llama.cpp 调用模式：{mode}")
+        return command
+
+    def _clean_cli_output(self, data: bytes) -> str:
+        text = self._decode_output(data).strip().removesuffix("<|im_end|>").strip()
         text = re.sub(r"\s*(?:\[end of text\]|<\|endoftext\|>|<\|im_end\|>)\s*$", "", text, flags=re.IGNORECASE)
         text = re.sub(r"^\s*(?:assistant|最终译文)\s*[:：]\s*", "", text, flags=re.IGNORECASE).strip()
-        if self._looks_like_runtime_log(text):
-            text = ""
-        if completed.returncode != 0 or not text:
-            detail = self._decode_output(completed.stderr).strip().splitlines()
-            output_detail = self._decode_output(completed.stdout).strip().splitlines()
-            message = detail[-1] if detail else (output_detail[0] if output_detail else "模型没有返回内容")
-            raise PolishingUnavailable(f"本地润色模型运行失败：{message}")
-        return text
+        return "" if self._looks_like_runtime_log(text) else text
+
+    def _diagnostic_line(self, name: str, completed: subprocess.CompletedProcess) -> str:
+        stderr = self._decode_output(completed.stderr).strip()
+        stdout = self._decode_output(completed.stdout).strip()
+        detail = self._last_meaningful_line(stderr) or self._last_meaningful_line(stdout) or "无输出"
+        return f"{name} 调用返回码 {completed.returncode}，{detail}"
+
+    @staticmethod
+    def _last_meaningful_line(text: str) -> str:
+        for line in reversed(text.splitlines()):
+            line = line.strip()
+            if line:
+                return line[:180]
+        return ""
 
     @staticmethod
     def _looks_like_runtime_log(text: str) -> bool:
